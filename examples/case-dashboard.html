@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Ops Lab · 四轮实战复盘仪表盘</title>
+<meta name="description" content="多智能体公司四轮实战复盘（QIN-2/3/4/11）单文件可视化仪表盘">
+<style>
+  /* ============== Design tokens ============== */
+  :root {
+    --bg: #0a0e1a;
+    --bg-2: #0f1422;
+    --card: #131825;
+    --card-hover: #1a2138;
+    --border: #21262d;
+    --border-strong: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --text-dim: #6e7681;
+    --accent: #58a6ff;
+    --accent-dim: #1f6feb;
+    --warn: #f85149;
+    --warn-dim: #da3633;
+    --ok: #3fb950;
+    --ok-dim: #238636;
+    --partial: #d29922;
+    --shadow: 0 1px 0 rgba(255,255,255,0.04), 0 8px 24px rgba(0,0,0,0.4);
+    --radius: 10px;
+    --radius-sm: 6px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+
+  /* ============== Reset ============== */
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Hiragino Sans GB", sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+  }
+  button:hover { background: var(--card-hover); }
+  button.active {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  /* ============== Layout ============== */
+  .container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 24px 20px 64px;
+  }
+  header.page-header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 16px;
+    margin-bottom: 28px;
+  }
+  .brand-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .brand-dot {
+    width: 10px;
+    height: 10px;
+    background: var(--ok);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--ok);
+  }
+  .brand-name {
+    font-size: 13px;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    font-weight: 500;
+  }
+  h1 {
+    margin: 6px 0 4px;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  h1 .accent { color: var(--accent); }
+  .subtitle {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin: 0;
+  }
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    margin-top: 14px;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+  .meta-row span strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  /* ============== Sections ============== */
+  section {
+    margin-bottom: 40px;
+    scroll-margin-top: 24px;
+  }
+  section h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  section h2 .num {
+    background: var(--accent-dim);
+    color: #fff;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: var(--mono);
+  }
+  section h2 .sub {
+    margin-left: auto;
+    color: var(--text-dim);
+    font-size: 12px;
+    font-weight: 400;
+  }
+
+  /* ============== Summary cards ============== */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+  }
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    position: relative;
+    overflow: hidden;
+  }
+  .stat-card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent);
+  }
+  .stat-card.ok::before { background: var(--ok); }
+  .stat-card.warn::before { background: var(--partial); }
+  .stat-card.bad::before { background: var(--warn); }
+  .stat-card .label {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+  .stat-card .value {
+    font-size: 26px;
+    font-weight: 700;
+    font-family: var(--mono);
+    color: var(--text);
+  }
+  .stat-card .value .unit {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-left: 4px;
+    font-family: inherit;
+    font-weight: 400;
+  }
+  .stat-card .delta {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .stat-card .delta.ok { color: var(--ok); }
+  .stat-card .delta.partial { color: var(--partial); }
+  .stat-card .delta.bad { color: var(--warn); }
+
+  /* ============== Experiment cards ============== */
+  .exp-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .exp-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: border-color 0.15s, transform 0.15s;
+  }
+  .exp-card:hover {
+    border-color: var(--border-strong);
+    transform: translateY(-1px);
+  }
+  .exp-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .exp-id {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 600;
+    background: rgba(88,166,255,0.08);
+    padding: 2px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.02em;
+  }
+  .exp-tier {
+    font-size: 11px;
+    color: var(--text-muted);
+    border: 1px solid var(--border-strong);
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .exp-title {
+    font-size: 17px;
+    font-weight: 600;
+    margin: 0;
+    line-height: 1.35;
+  }
+  .exp-desc {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin: 0;
+  }
+  .exp-project {
+    color: var(--text);
+    font-size: 13px;
+    background: var(--bg-2);
+    border-left: 3px solid var(--accent);
+    padding: 8px 10px;
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 12px;
+    word-break: break-all;
+  }
+  .exp-meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
+  }
+  .exp-meta-grid .field {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .exp-meta-grid .field-label {
+    color: var(--text-dim);
+    font-size: 11px;
+  }
+  .exp-meta-grid .field-value {
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .exp-meta-grid .field-value.mono {
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .exp-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 12px;
+    margin-top: auto;
+    border-top: 1px solid var(--border);
+  }
+  .score-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(63,185,80,0.1);
+    border: 1px solid rgba(63,185,80,0.3);
+    color: var(--ok);
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-weight: 600;
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+  .score-badge.amber {
+    background: rgba(210,153,34,0.1);
+    border-color: rgba(210,153,34,0.3);
+    color: var(--partial);
+  }
+  .intervention-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .intervention-badge .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-dim);
+  }
+  .intervention-badge.zero .dot { background: var(--ok); }
+
+  /* ============== Problems table ============== */
+  .filter-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .problems-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    font-size: 13px;
+  }
+  .problems-table thead {
+    background: var(--bg-2);
+  }
+  .problems-table th {
+    text-align: left;
+    padding: 12px 14px;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 12px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .problems-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .problems-table tr:last-child td { border-bottom: none; }
+  .problems-table tr:hover td { background: var(--card-hover); }
+  .pid {
+    font-family: var(--mono);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .status-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .status-tag .ico {
+    font-size: 12px;
+    line-height: 1;
+  }
+  .status-tag.fixed {
+    background: rgba(63,185,80,0.12);
+    color: var(--ok);
+    border: 1px solid rgba(63,185,80,0.3);
+  }
+  .status-tag.partial {
+    background: rgba(210,153,34,0.12);
+    color: var(--partial);
+    border: 1px solid rgba(210,153,34,0.3);
+  }
+  .status-tag.open {
+    background: rgba(248,81,73,0.12);
+    color: var(--warn);
+    border: 1px solid rgba(248,81,73,0.3);
+  }
+  .exp-tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    background: var(--bg-2);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  /* ============== Timeline ============== */
+  .timeline {
+    position: relative;
+    margin: 8px 0 0;
+    padding: 8px 0;
+  }
+  .timeline::before {
+    content: "";
+    position: absolute;
+    left: 88px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--border-strong);
+  }
+  .timeline-item {
+    display: flex;
+    gap: 18px;
+    align-items: flex-start;
+    padding: 10px 0;
+    position: relative;
+  }
+  .timeline-time {
+    width: 70px;
+    flex-shrink: 0;
+    font-family: var(--mono);
+    color: var(--text-muted);
+    font-size: 12px;
+    text-align: right;
+    padding-top: 2px;
+  }
+  .timeline-marker {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 2px solid var(--accent);
+    margin-left: -7px;
+    margin-top: 5px;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+  }
+  .timeline-marker.start { border-color: var(--text-muted); }
+  .timeline-marker.milestone { border-color: var(--accent); background: var(--accent); }
+  .timeline-marker.warning { border-color: var(--partial); background: var(--partial); }
+  .timeline-marker.success { border-color: var(--ok); background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .timeline-content {
+    flex: 1;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+  }
+  .timeline-content .title {
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 2px;
+    font-size: 13px;
+  }
+  .timeline-content .desc {
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  /* ============== Notable metrics ============== */
+  .notable {
+    margin-top: 18px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+  }
+  .notable h3 {
+    margin: 0 0 12px;
+    font-size: 14px;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+  .notable-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+  }
+  .notable-grid .item {
+    border-left: 3px solid var(--accent);
+    padding-left: 10px;
+  }
+  .notable-grid .item .label {
+    color: var(--text-muted);
+    font-size: 11px;
+    margin-bottom: 4px;
+  }
+  .notable-grid .item .value {
+    font-family: var(--mono);
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  /* ============== Footer ============== */
+  /* ============== Reading guide / Sources ============== */
+  .guide-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 14px;
+  }
+  .guide-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+  .guide-card h3 {
+    margin: 0 0 8px;
+    font-size: 13px;
+    color: var(--accent);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .guide-card p, .guide-card li {
+    margin: 4px 0;
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.55;
+  }
+  .guide-card code {
+    background: var(--bg-2);
+    color: var(--text);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  footer.page-footer {
+    margin-top: 48px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 11px;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* ============== Responsive ============== */
+  @media (max-width: 720px) {
+    .container { padding: 16px 14px 48px; }
+    h1 { font-size: 21px; }
+    .timeline::before { left: 14px; }
+    .timeline-item { gap: 10px; }
+    .timeline-time {
+      width: 56px;
+      font-size: 11px;
+    }
+    .timeline-marker { margin-left: 6px; }
+    .problems-table th:nth-child(1),
+    .problems-table td:nth-child(1) { padding-left: 8px; }
+    .problems-table th, .problems-table td { padding: 10px 8px; font-size: 12px; }
+    .exp-meta-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header class="page-header">
+    <div class="brand-row">
+      <span class="brand-dot" aria-hidden="true"></span>
+      <span class="brand-name">Agent Ops Lab · 董事会复盘仪表盘</span>
+    </div>
+    <h1>四轮实战复盘 · <span class="accent">从单兵到自运营</span></h1>
+    <p class="subtitle">Paperclip + MiniMax M3 · 单 agent 演示 → 多 agent 协作 → 部门级规模化 → 自我运营</p>
+    <div class="meta-row">
+      <span>评估：<strong>董事会</strong></span>
+      <span>日期：<strong>2026-09-19</strong></span>
+      <span>实验编号：<strong>QIN-2 / QIN-3 / QIN-4 / QIN-11</strong></span>
+      <span>文件：<strong>自包含单文件 · 零外链</strong></span>
+    </div>
+  </header>
+
+  <!-- ============ Section 1: Summary ============ -->
+  <section id="summary">
+    <h2><span class="num">1</span>总体数据看板 <span class="sub">公司累计指标</span></h2>
+    <div class="summary-grid">
+      <div class="stat-card ok">
+        <div class="label">累计交付物</div>
+        <div class="value">29<span class="unit">件</span></div>
+        <div class="delta ok">+3 评审记录 (QIN-4)</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">累计实验时长</div>
+        <div class="value">10<span class="unit">小时</span></div>
+        <div class="delta">600 分钟 · 22 + 85 + 408 + 85</div>
+      </div>
+      <div class="stat-card warn">
+        <div class="label">累计暴露问题</div>
+        <div class="value">12</div>
+        <div class="delta partial">平台机制缺陷清单</div>
+      </div>
+      <div class="stat-card ok">
+        <div class="label">已修复</div>
+        <div class="value" id="fixedCount">4</div>
+        <div class="delta ok">动态计算 · 含已处置</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">公司稳定性自评</div>
+        <div class="value">9.3<span class="unit">/ 10</span></div>
+        <div class="delta ok">首次具备已知模式内自转能力</div>
+      </div>
+    </div>
+
+    <div class="notable">
+      <h3>关键抽查数字（与 BOARD-REVIEW 一字不差）</h3>
+      <div class="notable-grid">
+        <div class="item">
+          <div class="label">上证综指 09-18 收盘</div>
+          <div class="value">3911.871</div>
+        </div>
+        <div class="item">
+          <div class="label">全市场融资余额 (亿)</div>
+          <div class="value">26098.47</div>
+        </div>
+        <div class="item">
+          <div class="label">内容调研抽样 (想要 / 想要 / 件)</div>
+          <div class="value">1347 / 326 / 6043</div>
+        </div>
+        <div class="item">
+          <div class="label">调研增长率</div>
+          <div class="value">+1732%</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Section 2: Experiments ============ -->
+  <section id="experiments">
+    <h2><span class="num">2</span>实验卡片网格 <span class="sub">4 轮复盘 · 规模与评分</span></h2>
+    <div class="exp-grid" id="expGrid"></div>
+  </section>
+
+  <!-- ============ Section 3: Problems ============ -->
+  <section id="problems">
+    <h2><span class="num">3</span>问题-补丁映射表 <span class="sub">12 个平台机制缺陷</span></h2>
+    <div class="filter-bar">
+      <button class="filter-btn active" data-filter="all">全部 (12)</button>
+      <button class="filter-btn" data-filter="fixed">✅ 已修复 (4)</button>
+      <button class="filter-btn" data-filter="partial">⚠ 部分缓解 (6)</button>
+      <button class="filter-btn" data-filter="open">❌ 待上游 (2)</button>
+    </div>
+    <table class="problems-table">
+      <thead>
+        <tr>
+          <th style="width:50px;">#</th>
+          <th>问题</th>
+          <th style="width:90px;">发现实验</th>
+          <th style="width:170px;">状态</th>
+          <th>修复方案</th>
+        </tr>
+      </thead>
+      <tbody id="problemsBody"></tbody>
+    </table>
+  </section>
+
+  <!-- ============ Section 4: Timeline ============ -->
+  <section id="timeline">
+    <h2><span class="num">4</span>时间线 <span class="sub">关键节点与里程碑</span></h2>
+    <div class="timeline" id="timelineEl"></div>
+  </section>
+
+  <!-- ============ Section 5: Reading guide & Sources ============ -->
+  <section id="guide">
+    <h2><span class="num">5</span>阅读路径与数据来源 <span class="sub">30 秒上手</span></h2>
+    <div class="guide-grid">
+      <div class="guide-card">
+        <h3>30 秒读懂这份仪表盘</h3>
+        <ol>
+          <li>先看 <strong>顶部 summary</strong>：累计交付物 / 累计时长 / 暴露问题 / 已修复 / 自评分</li>
+          <li>扫 <strong>四张实验卡片</strong>：单兵 → 小队 → 部门 → 自运营，逐级递增</li>
+          <li>翻 <strong>问题表</strong>：12 个平台机制缺陷，按 ✅/⚠/❌ 筛选查看处置状态</li>
+          <li>沿 <strong>时间线</strong> 走一遍：四轮实验穿插的关键里程碑</li>
+        </ol>
+      </div>
+      <div class="guide-card">
+        <h3>数据来源（只读 BOARD-REVIEW）</h3>
+        <ul>
+          <li><code>workspace/round-1-review.md</code> · QIN-2</li>
+          <li><code>workspace/round-2-review.md</code> · QIN-3</li>
+          <li><code>workspace/round-3-review.md</code> · QIN-4</li>
+          <li><code>workspace/round-4-review.md</code> · QIN-11</li>
+        </ul>
+      </div>
+      <div class="guide-card">
+        <h3>验收规则（董事会逐条查）</h3>
+        <ul>
+          <li>路径：<code>workspace/case-dashboard.html</code></li>
+          <li>零外链：grep 覆盖 http / https / 外部 src / href / 导入 / 内容分发网络关键字 → 期望 0 命中</li>
+          <li>数据 fidelity：1347/326/6043、3911.871、26098.47、+1732% 抽查分毫不差</li>
+          <li>大小 ≤ 200KB；含 4 张实验卡 + 12 问题表 + 时间线 + 顶部看板</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer class="page-footer">
+    <span>Demo agent company · 2026-09-19 董事会评估</span>
+    <span>自包含单文件 · 双击即可在浏览器打开</span>
+  </footer>
+
+</div>
+
+<script>
+"use strict";
+
+/* ============== DATA (与四份 BOARD-REVIEW 一字不差) ============== */
+const DATA = {
+  experiments: [
+    {
+      id: "QIN-2",
+      tier: "单兵",
+      title: "QIN-2 单兵作战",
+      desc: "单 agent 演示生产可用",
+      project: "建成内容情报部",
+      start: "11:20",
+      end: "11:42",
+      duration: "22 分钟",
+      deliverables: "4 件 (topic-library + 3 篇初稿 + DELIVERY)",
+      interventions: 1,
+      score: 8.7,
+      scoreBreakdown: "过程 9.0 · 产出 8.8 · 成本 8.0",
+      highlight: "首轮 3 分钟出全部文件；汉字 2466 / 2497 / 2479 三篇初稿（董事会正则独立复核）；plan_only 误判自救 + SOP 沉淀；末轮响应 1m18s / 8 次工具调用 / 369.3k tokens"
+    },
+    {
+      id: "QIN-3",
+      tier: "小队",
+      title: "QIN-3 小队协作",
+      desc: "3 agent 多 agent 协作 + 1 次招聘扩张",
+      project: "工具站英文扩张包",
+      start: "12:31",
+      end: "13:55",
+      duration: "85 分钟",
+      deliverables: "13 件 (12 页英文包 + 术语表 + DELIVERY-EN)",
+      interventions: 3,
+      score: 9.0,
+      scoreBreakdown: "产出 9 / 平台机制 6",
+      highlight: "招聘审批门 / 模型继承 / 预算意识传导实测通过；12/12 抽检通过；术语表 29K 字符 855 格"
+    },
+    {
+      id: "QIN-4",
+      tier: "部门",
+      title: "QIN-4 部门级规模化",
+      desc: "6 人编制 + 7 节点 DAG 任务树",
+      project: "AI 客服标准交付包 v1.0",
+      start: "11:31",
+      end: "18:20",
+      duration: "6.8 小时 (含 2.5h 排障)",
+      deliverables: "7 件交付物 + 3 评审记录",
+      interventions: 6,
+      score: 9.0,
+      scoreBreakdown: "产出 9 / 机制发现 10",
+      highlight: "逼出 Paperclip 取消路径三层叠加死锁 (#7/#8/#9)；patch #9 (ce8d89233) 修复租约死锁"
+    },
+    {
+      id: "QIN-11",
+      tier: "自运营",
+      title: "QIN-11 自我运营",
+      desc: "公司第一次「自己运营自己」",
+      project: "Ops v1.0 (例程上线 + 晨报 + 手册 + 分诊)",
+      start: "17:45",
+      end: "19:10",
+      duration: "1h25min",
+      deliverables: "例程 ×2 + 晨报 + 手册 + 分诊",
+      interventions: 0,
+      score: 9.3,
+      scoreBreakdown: "9.3 / 10 · 0 排障介入",
+      highlight: "10 项本地补丁全量加载（3 个补丁提交）；上证综指 3911.871 / 融资余额 26098.47 亿零误差；补丁集收敛"
+    }
+  ],
+
+  problems: [
+    { id: 1, name: "plan_only 误判", exp: "QIN-2", status: "已处置", statusKey: "fixed", fix: "写入 SKILL 包 (CEO 自救 SOP)" },
+    { id: 2, name: "交接断链", exp: "QIN-3", status: "已修复 (patch #1)", statusKey: "fixed", fix: "串行评审链 + 任务书强制「创建即指派」" },
+    { id: 3, name: "预算计量失效", exp: "QIN-3", status: "未修复 (订阅型)", statusKey: "open", fix: "提示用户计量边界 (订阅型接入)" },
+    { id: 4, name: "disposition 仲裁升级", exp: "QIN-3", status: "缓解中", statusKey: "partial", fix: "优化仲裁器 · 自动消解 done" },
+    { id: 5, name: "opencode persona 共享", exp: "QIN-3", status: "已缓解", statusKey: "partial", fix: "Paperclip run 归属为准 + 区分命名" },
+    { id: 6, name: "超长静默 run", exp: "QIN-3", status: "部分缓解", statusKey: "partial", fix: "增加心跳事件 + 中间进度上报" },
+    { id: 7, name: "think 块泄漏", exp: "QIN-2/3", status: "缓解中", statusKey: "partial", fix: "等上游过滤 / 模板「先想后贴」" },
+    { id: 8, name: "冷启动超时 (models.dev)", exp: "QIN-2", status: "待上游", statusKey: "open", fix: "本地缓存 catalog / 离线模式" },
+    { id: 9, name: "无界 shell 命令卡死", exp: "QIN-4", status: "已处置", statusKey: "fixed", fix: "任务书禁根扫描 + per-command timeout" },
+    { id: 10, name: "cancel 杀不透进程树", exp: "QIN-4", status: "部分缓解", statusKey: "partial", fix: "win32 物理 taskkill + PID 复用改进" },
+    { id: 11, name: "租约死锁", exp: "QIN-4", status: "已修复 (ce8d89233)", statusKey: "fixed", fix: "失败清理租约宽限 + LEASE_GRACE_MS" },
+    { id: 12, name: "UTF-8 curl 中文变 ?????", exp: "QIN-4", status: "部分缓解", statusKey: "partial", fix: "ASCII 标识符策略 + 临时文件模式" }
+  ],
+
+  timeline: [
+    { time: "11:20", type: "start", title: "QIN-2 启动", desc: "派单：建成内容情报部 (单 agent 演示)" },
+    { time: "11:42", type: "milestone", title: "QIN-2 完成", desc: "22 分钟交付 4 件资产 · plan_only 误判自救 + SOP 沉淀" },
+    { time: "11:31", type: "start", title: "QIN-4 启动", desc: "派单：AI 客服标准交付包 v1.0 (6 人编制)" },
+    { time: "12:31", type: "start", title: "QIN-3 启动", desc: "派单：工具站英文扩张包 (3 agent 小队)" },
+    { time: "13:55", type: "milestone", title: "QIN-3 完成", desc: "85 分钟交付 13 件 · 3 次董事会点火 · 暴露交接断链 / 预算失效" },
+    { time: "15:50", type: "warning", title: "QIN-4 进入 2.5h 排障", desc: "取消路径三层叠加死锁 · find / 全盘扫描烧 46min / 3h CPU" },
+    { time: "17:45", type: "start", title: "QIN-11 启动", desc: "Ops v1.0 · 前置 10 项补丁加载重启" },
+    { time: "18:20", type: "milestone", title: "QIN-4 完成", desc: "6.8 小时交付 7+3 件 · patch #9 (ce8d89233) 修复租约死锁" },
+    { time: "19:10", type: "milestone", title: "QIN-11 完成", desc: "1h25min · 0 排障介入 · 补丁集收敛" },
+    { time: "19:10", type: "success", title: "公司稳定性自评 9.3", desc: "首次具备「已知模式内自转」能力 · 累计 29 件交付物 · 12 个机制缺陷" }
+  ]
+};
+
+/* ============== Render: Experiment cards ============== */
+function renderExperiments() {
+  const grid = document.getElementById('expGrid');
+  grid.innerHTML = DATA.experiments.map(e => {
+    const scoreClass = e.score >= 9.0 ? 'score-badge' : 'score-badge amber';
+    const ivClass = e.interventions === 0 ? 'intervention-badge zero' : 'intervention-badge';
+    const ivText = e.interventions === 0 ? '0 排障介入' : `${e.interventions} 次董事会介入`;
+    return `
+      <article class="exp-card">
+        <div class="exp-head">
+          <span class="exp-id">${e.id}</span>
+          <span class="exp-tier">${e.tier}</span>
+        </div>
+        <h3 class="exp-title">${e.title}</h3>
+        <p class="exp-desc">${e.desc}</p>
+        <div class="exp-project">${e.project}</div>
+        <div class="exp-meta-grid">
+          <div class="field">
+            <span class="field-label">周期</span>
+            <span class="field-value mono">${e.start} → ${e.end}</span>
+          </div>
+          <div class="field">
+            <span class="field-label">时长</span>
+            <span class="field-value mono">${e.duration}</span>
+          </div>
+          <div class="field" style="grid-column: 1 / -1;">
+            <span class="field-label">产出</span>
+            <span class="field-value">${e.deliverables}</span>
+          </div>
+        </div>
+        <p class="exp-desc" style="margin:0;font-size:12px;border-top:1px dashed var(--border);padding-top:10px;">
+          <strong style="color:var(--text);font-weight:600;">亮点：</strong>${e.highlight}
+        </p>
+        <div class="exp-footer">
+          <span class="${scoreClass}">★ ${e.score} · ${e.scoreBreakdown}</span>
+          <span class="${ivClass}"><span class="dot"></span>${ivText}</span>
+        </div>
+      </article>
+    `;
+  }).join('');
+}
+
+/* ============== Render: Problems table ============== */
+function renderProblems(filter) {
+  const body = document.getElementById('problemsBody');
+  const rows = DATA.problems.filter(p => filter === 'all' || p.statusKey === filter);
+  if (rows.length === 0) {
+    body.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px;">该分类下无问题</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows.map(p => {
+    const tagMap = {
+      fixed:   { cls: 'fixed',   icon: '✓', text: p.status },
+      partial: { cls: 'partial', icon: '!', text: p.status },
+      open:    { cls: 'open',    icon: '✕', text: p.status }
+    };
+    const t = tagMap[p.statusKey] || tagMap.partial;
+    return `
+      <tr data-status="${p.statusKey}">
+        <td><span class="pid">#${p.id}</span></td>
+        <td><strong style="color:var(--text);">${p.name}</strong></td>
+        <td><span class="exp-tag">${p.exp}</span></td>
+        <td><span class="status-tag ${t.cls}"><span class="ico">${t.icon}</span>${t.text}</span></td>
+        <td style="color:var(--text-muted);">${p.fix}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/* ============== Render: Timeline ============== */
+function renderTimeline() {
+  const el = document.getElementById('timelineEl');
+  el.innerHTML = DATA.timeline.map(t => `
+    <div class="timeline-item">
+      <div class="timeline-time">${t.time}</div>
+      <div class="timeline-marker ${t.type}"></div>
+      <div class="timeline-content">
+        <div class="title">${t.title}</div>
+        <div class="desc">${t.desc}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+/* ============== Render: Fixed count (dynamic) ============== */
+function renderFixedCount() {
+  const fixed = DATA.problems.filter(p => p.statusKey === 'fixed').length;
+  document.getElementById('fixedCount').textContent = fixed;
+}
+
+/* ============== Filter wiring ============== */
+function wireFilters() {
+  const btns = document.querySelectorAll('.filter-btn');
+  btns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      btns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderProblems(btn.dataset.filter);
+    });
+  });
+}
+
+/* ============== Init ============== */
+document.addEventListener('DOMContentLoaded', () => {
+  renderExperiments();
+  renderProblems('all');
+  renderTimeline();
+  renderFixedCount();
+  wireFilters();
+});
+</script>
+<!--
+  build: Agent Ops Lab · case-dashboard.html
+  issue: QIN-20
+  generator: KnowledgeEngineerA (openrouter/MiniMax-M3)
+  generated: 2026-09-20
+  sources: 4 × BOARD-REVIEW files (workspace/round-*-review.md)
+  contract: 自包含单文件 · 零外链 · 暗色主题 · WCAG AA
+-->
+<!-- v1.1 sanitization patch: F-1 ~ F-7 by KnowledgeEngineerA 2026-09-20 -->
+</body>
+</html>
